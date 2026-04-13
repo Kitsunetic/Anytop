@@ -1,10 +1,13 @@
+from multiprocessing import current_process
+from typing import Dict, List, Tuple
+
 import numpy as np
 from scipy.spatial.transform import Rotation as R
-from typing import Dict, List, Tuple
-from multiprocessing import current_process
 from tqdm import tqdm
-if current_process().name == 'MainProcess':  # enables multiprocessing 
+
+if current_process().name == "MainProcess":  # enables multiprocessing
     import bpy
+
 
 def save_blender_file(path):
     print(f"{10 * '*'} saved {path}")
@@ -29,9 +32,7 @@ def get_rotation_matrix_between_vectors(v0: np.ndarray, v1: np.ndarray) -> np.nd
     C = np.array([u, v, w])
 
     # rotation matrix in new basis
-    R_uvw = np.array([[cos_t, -sin_t, 0],
-                      [sin_t, cos_t, 0],
-                      [0, 0, 1]])
+    R_uvw = np.array([[cos_t, -sin_t, 0], [sin_t, cos_t, 0], [0, 0, 1]])
     # full rotation matrix
     R = C.T @ R_uvw @ C
     return R
@@ -62,19 +63,26 @@ class CylinderBone:
         self.bone_name = Names.get_bone_name(head_ind, tail_ind, unq_name)
         self.unq_name = unq_name
 
-        empty = bpy.data.objects.get('empty_axis')
+        empty = bpy.data.objects.get("empty_axis")
 
         self.location = None
         self.rotation = None
         self.head_loc = None
         self.tail_loc = None
         self.radius = radius
-        
 
-        self.material = bpy.data.materials.get('base_bone') if material is None else material
+        self.material = bpy.data.materials.get("base_bone") if material is None else material
 
-        bpy.ops.mesh.primitive_cone_add(vertices=32, radius1=self.radius, radius2=self.radius * 0.6, depth=1, 
-                                enter_editmode=False, align='WORLD', location=(0, 0, 0), scale=(1, 1, 1))
+        bpy.ops.mesh.primitive_cone_add(
+            vertices=32,
+            radius1=self.radius,
+            radius2=self.radius * 0.6,
+            depth=1,
+            enter_editmode=False,
+            align="WORLD",
+            location=(0, 0, 0),
+            scale=(1, 1, 1),
+        )
         # bpy.ops.object.shade_smooth()
         cyl = bpy.context.object
         cyl.name = self.bone_name
@@ -86,7 +94,7 @@ class CylinderBone:
         v_src = np.array([0, 0, 1])  # default cylinder direction
         v_tgt = head_loc - tail_loc
         v_tgt = v_tgt / np.linalg.norm(v_tgt)
-        cyl.rotation_mode = 'QUATERNION'
+        cyl.rotation_mode = "QUATERNION"
         ix, iy, iz, w = tuple(R.from_matrix(get_rotation_matrix_between_vectors(v_src, v_tgt)).as_quat())
         cyl.rotation_quaternion[0] = w
         cyl.rotation_quaternion[1] = ix
@@ -117,7 +125,7 @@ class Names:
     @staticmethod
     def get_joint_name(joint_ind, unq_name):
         return f"j{joint_ind}" if unq_name is None else f"{joint_ind}_{unq_name}"
-    
+
     @staticmethod
     def get_bone_name(head, tail, unq_name):
         return f"cyl_{head}_{tail}" if unq_name is None else f"cyl_{head}_{tail}_{unq_name}"
@@ -129,21 +137,22 @@ class Names:
 
 class StickFigure:
     @staticmethod
-    def visualize(joint_locations, bone_list, 
-                  unq_name=None, sphere_radius=0.04, cylinder_radius=0.03, joint_materials=None):
+    def visualize(joint_locations, bone_list, unq_name=None, sphere_radius=0.04, cylinder_radius=0.03, joint_materials=None):
         """
         joint locations: [seq_len, n_joints, 3]
         name: use in case of multiple stick figures visualizations
         """
         collection_name = Names.get_collection_name(unq_name)
         CollectionManager.create_collection(collection_name)
-        
-        empty = bpy.data.objects.new(name='empty_axis', object_data=None)
-        empty.empty_display_type = 'PLAIN_AXES'
+
+        empty = bpy.data.objects.new(name="empty_axis", object_data=None)
+        empty.empty_display_type = "PLAIN_AXES"
         bpy.context.scene.collection.objects.link(empty)  # Add the empty to the scene
-        CollectionManager.add_object_to_collection('empty_axis', collection_name)
-        
-        cyl_bone_dict = StickFigure.create_cylinder_bones(collection_name, bone_list, unq_name, cylinder_radius, joint_materials)
+        CollectionManager.add_object_to_collection("empty_axis", collection_name)
+
+        cyl_bone_dict = StickFigure.create_cylinder_bones(
+            collection_name, bone_list, unq_name, cylinder_radius, joint_materials
+        )
         StickFigure.create_joints(collection_name, bone_list, unq_name, sphere_radius)
         n_frames = joint_locations.shape[0]
         for frame in tqdm(range(n_frames), desc=f"Stick figure sequence{f' {unq_name}' if unq_name else ''}"):
@@ -151,12 +160,14 @@ class StickFigure:
             StickFigure.apply_pose(pose, frame, cyl_bone_dict, bone_list)
 
     @staticmethod
-    def create_cylinder_bones(collection_name, bone_list, unq_name, radius=0.03, joint_materials=None) -> Dict[Tuple[int, int], CylinderBone]:
+    def create_cylinder_bones(
+        collection_name, bone_list, unq_name, radius=0.03, joint_materials=None
+    ) -> Dict[Tuple[int, int], CylinderBone]:
         cyl_bones = {}
         for head, tail in bone_list:
             if joint_materials is None:
-                material = None 
-            elif type(joint_materials) == dict: 
+                material = None
+            elif type(joint_materials) == dict:
                 material = joint_materials[head]
             else:  # single material for all joints case
                 material = joint_materials
@@ -168,12 +179,14 @@ class StickFigure:
     @staticmethod
     def create_joints(collection_name, bone_list: List[Tuple[int, int]], unq_name: str, radius=0.04):
         joints = set()
-        material = bpy.data.materials.get('base_joint')
-        empty = bpy.data.objects.get('empty_axis')
+        material = bpy.data.materials.get("base_joint")
+        empty = bpy.data.objects.get("empty_axis")
         for bone in bone_list:
             for j in bone:
                 if j not in joints:
-                    bpy.ops.mesh.primitive_uv_sphere_add(radius=radius, calc_uvs=False, enter_editmode=False, align='WORLD', scale=(1, 1, 1))
+                    bpy.ops.mesh.primitive_uv_sphere_add(
+                        radius=radius, calc_uvs=False, enter_editmode=False, align="WORLD", scale=(1, 1, 1)
+                    )
                     # bpy.ops.object.shade_smooth()
                     joint_obj = bpy.context.object
                     joint_obj.data.materials.append(material)

@@ -1,18 +1,21 @@
-from huggingface_hub import hf_hub_download
-from huggingface_hub._snapshot_download import snapshot_download
 import os
 
-REPO_NAME = 'inbar2344/AnyTop'
+from huggingface_hub import hf_hub_download
+from huggingface_hub._snapshot_download import snapshot_download
+
+REPO_NAME = "inbar2344/AnyTop"
+
 
 def get_dependencies():
     dependencies_path = snapshot_download(repo_id=REPO_NAME)
-    print('Data dependencies are cached at [{}]'.format(dependencies_path))
+    print("Data dependencies are cached at [{}]".format(dependencies_path))
     link_all_checkpoints(dependencies_path)
     return dependencies_path
 
+
 def link_all_checkpoints(dependencies_path):
-    link_checkpoints(os.path.join(dependencies_path, 'checkpoints'), 'save')  # anytop checkpoints
-    link_data(os.path.join(dependencies_path, 'dataset'), 'dataset')  # anytop dataset dependencies
+    link_checkpoints(os.path.join(dependencies_path, "checkpoints"), "save")  # anytop checkpoints
+    link_data(os.path.join(dependencies_path, "dataset"), "dataset")  # anytop dataset dependencies
 
 
 def link_checkpoints(src_dir, dst_dir):
@@ -23,6 +26,7 @@ def link_checkpoints(src_dir, dst_dir):
         if not os.path.exists(os.path.join(dst_dir, subdir)):
             os.symlink(os.path.join(src_dir, subdir), os.path.join(dst_dir, subdir))
 
+
 def get_all_files(directory):
     files = []
     for root, dirs, file_list in os.walk(directory):
@@ -30,6 +34,7 @@ def get_all_files(directory):
             relative_file_path = os.path.relpath(os.path.join(root, file), start=directory)
             files.append(relative_file_path)
     return files
+
 
 def link_data(src_dir, dst_dir):
     assert os.path.isdir(src_dir)

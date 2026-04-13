@@ -1,24 +1,26 @@
+import copy
 import functools
 import os
+import random
 import re
 from os.path import join as pjoin
 from typing import Optional
+
 import blobfile as bf
 import torch
 from torch.optim import AdamW
-from diffusion import logger
-from utils import dist_util
-from diffusion.fp16_util import MixedPrecisionTrainer
-from diffusion.resample import LossAwareSampler
 from tqdm import tqdm
-from diffusion.resample import create_named_schedule_sampler
+
+from diffusion import logger
+from diffusion.fp16_util import MixedPrecisionTrainer
+from diffusion.resample import LossAwareSampler, create_named_schedule_sampler
 from sample.generate import main as generate
-import copy
+from utils import dist_util
 from utils.model_util import load_model
-import random
 
 INITIAL_LOG_LOSS_SCALE = 20.0
 torch.autograd.set_detect_anomaly(True)
+
 
 class TrainLoop:
     def __init__(self, args, train_platform, model, diffusion, data):
@@ -41,7 +43,7 @@ class TrainLoop:
 
         self.step = 0
         self.resume_step = 0
-        self.global_batch = self.batch_size # * dist.get_world_size()
+        self.global_batch = self.batch_size  # * dist.get_world_size()
         self.num_steps = args.num_steps
         self.num_epochs = self.num_steps // len(self.data) + 1
 
@@ -55,26 +57,22 @@ class TrainLoop:
             use_fp16=self.use_fp16,
             fp16_scale_growth=self.fp16_scale_growth,
         )
-        
 
-        self.opt = AdamW(
-            self.mp_trainer.master_params, lr=self.lr, weight_decay=self.weight_decay)
-        self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.opt, 
-                                                step_size = 10000, 
-                                                gamma = 0.99)
-        
+        self.opt = AdamW(self.mp_trainer.master_params, lr=self.lr, weight_decay=self.weight_decay)
+        self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.opt, step_size=10000, gamma=0.99)
+
         if self.resume_step:
             self._load_optimizer_state()
             # Model was resumed, either due to a restart or a checkpoint
             # being specified at the command line.
 
         self.device = torch.device("cpu")
-        if torch.cuda.is_available() and dist_util.dev() != 'cpu':
+        if torch.cuda.is_available() and dist_util.dev() != "cpu":
             self.device = torch.device(dist_util.dev())
 
-        self.schedule_sampler_type = 'uniform'
+        self.schedule_sampler_type = "uniform"
         self.schedule_sampler = create_named_schedule_sampler(self.schedule_sampler_type, diffusion)
-        
+
         self.eval_wrapper, self.eval_data, self.eval_gt_data = None, None, None
         self.use_ddp = False
         self.ddp_model = self.model
@@ -86,77 +84,75 @@ class TrainLoop:
             self.resume_step = parse_resume_step_from_filename(self.resume_checkpoint)
             logger.log(f"loading model from checkpoint: {self.resume_checkpoint}...")
 
-            state_dict = dist_util.load_state_dict(
-                self.resume_checkpoint, map_location=dist_util.dev())
+            state_dict = dist_util.load_state_dict(self.resume_checkpoint, map_location=dist_util.dev())
 
-            if 'model_avg' in state_dict:
-                print('loading both model and model_avg')
-                state_dict, state_dict_avg = state_dict['model'], state_dict[
-                    'model_avg']
+            if "model_avg" in state_dict:
+                print("loading both model and model_avg")
+                state_dict, state_dict_avg = state_dict["model"], state_dict["model_avg"]
                 load_model(self.model, state_dict)
                 load_model(self.model_avg, state_dict_avg)
             else:
                 load_model(self.model, state_dict)
                 if self.args.use_ema:
                     # in case we load from a legacy checkpoint, just copy the model
-                    print('loading model_avg from model')
+                    print("loading model_avg from model")
                     self.model_avg.load_state_dict(self.model.state_dict())
 
     def _load_optimizer_state(self):
         opt_checkpoint = self.find_resume_opt_checkpoint()
         if bf.exists(opt_checkpoint):
             logger.log(f"loading optimizer state from checkpoint: {opt_checkpoint}")
-            state_dict = dist_util.load_state_dict(
-                opt_checkpoint, map_location=dist_util.dev()
-            )
+            state_dict = dist_util.load_state_dict(opt_checkpoint, map_location=dist_util.dev())
             if self.use_fp16:
-                if 'scaler' not in state_dict:
+                if "scaler" not in state_dict:
                     print("scaler state not found ... not loading it.")
                 else:
                     # load grad scaler state
-                    self.scaler.load_state_dict(state_dict['scaler'])
+                    self.scaler.load_state_dict(state_dict["scaler"])
                     # for the rest
-                    state_dict = state_dict['opt']
+                    state_dict = state_dict["opt"]
 
-            tgt_wd = self.opt.param_groups[0]['weight_decay']
-            print('target weight decay:', tgt_wd)
+            tgt_wd = self.opt.param_groups[0]["weight_decay"]
+            print("target weight decay:", tgt_wd)
             self.opt.load_state_dict(state_dict)
-            print('loaded weight decay (will be replaced):',
-                  self.opt.param_groups[0]['weight_decay'])
+            print("loaded weight decay (will be replaced):", self.opt.param_groups[0]["weight_decay"])
             # preserve the weight decay parameter
             for group in self.opt.param_groups:
-                group['weight_decay'] = tgt_wd
+                group["weight_decay"] = tgt_wd
 
     def run_loop(self):
-         print('train steps:', self.num_steps)
-         while self.total_step() < self.num_steps:
-            print(f'Starting a new epoch at step {self.total_step()}')
+        print("train steps:", self.num_steps)
+        while self.total_step() < self.num_steps:
+            print(f"Starting a new epoch at step {self.total_step()}")
             for motion, cond in tqdm(self.data):
                 if not (not self.lr_anneal_steps or self.total_step() < self.lr_anneal_steps):
                     break
 
                 motion = motion.to(self.device)
-                cond['y'] = {key: val.to(self.device) if torch.is_tensor(val) else val for key, val in cond['y'].items()}
+                cond["y"] = {key: val.to(self.device) if torch.is_tensor(val) else val for key, val in cond["y"].items()}
 
                 self.run_step(motion, cond)
 
                 if self.total_step() % self.log_interval == 0:
-                    print(cond['y']['object_type'])
-                    for k,v in logger.get_current().dumpkvs().items():
-                        if k == 'loss':
-                            print('step[{}]: loss[{:0.5f}]'.format(self.total_step(), v))
-                        if k in ['step', 'samples'] or '_q' in k:
+                    print(cond["y"]["object_type"])
+                    for k, v in logger.get_current().dumpkvs().items():
+                        if k == "loss":
+                            print("step[{}]: loss[{:0.5f}]".format(self.total_step(), v))
+                        if k in ["step", "samples"] or "_q" in k:
                             continue
                         else:
-                            self.train_platform.report_scalar(name=k, value=v, iteration=self.total_step(), group_name='Loss')
+                            self.train_platform.report_scalar(name=k, value=v, iteration=self.total_step(), group_name="Loss")
 
-                if self.total_step() % self.save_interval == 0 and self.total_step() != 0 or self.total_step() == self.num_steps - 1:
+                if (
+                    self.total_step() % self.save_interval == 0
+                    and self.total_step() != 0
+                    or self.total_step() == self.num_steps - 1
+                ):
                     self.save()
                     self.model.eval()
                     self.evaluate()
                     self.generate_during_training()
                     self.model.train()
-
 
                     # Run for a finite amount of time in integration tests.
                     if os.environ.get("DIFFUSION_TRAINING_TEST", "") and self.step > 0:
@@ -174,20 +170,20 @@ class TrainLoop:
             return
         gen_args = copy.deepcopy(self.args)
         gen_args.model_path = os.path.join(self.save_dir, self.ckpt_file_name())
-        gen_args.output_dir = os.path.join(self.save_dir, f'{self.ckpt_file_name()}.samples')
+        gen_args.output_dir = os.path.join(self.save_dir, f"{self.ckpt_file_name()}.samples")
         gen_args.num_samples = self.args.gen_num_samples
         gen_args.num_repetitions = self.args.gen_num_repetitions
-        gen_args.motion_length = 6.0 #None  # length is taken from the dataset
+        gen_args.motion_length = 6.0  # None  # length is taken from the dataset
         gen_args.load_from_model_name = True
-        all_objects = self.data.dataset.motion_dataset.cond_dict.keys() 
+        all_objects = self.data.dataset.motion_dataset.cond_dict.keys()
         random.seed(self.step)
         gen_args.object_type = random.sample(all_objects, gen_args.num_samples)
         random.seed(self.args.seed)
         all_sample_save_path = generate(gen_args, self.data.dataset.motion_dataset.cond_dict)
-        self.train_platform.report_media(title='Motion', series='Predicted Motion', iteration=self.total_step(),
-                                         local_path=all_sample_save_path)
-        
-    
+        self.train_platform.report_media(
+            title="Motion", series="Predicted Motion", iteration=self.total_step(), local_path=all_sample_save_path
+        )
+
     def total_step(self):
         total_step = self.step
         if self.resume_step:
@@ -199,12 +195,11 @@ class TrainLoop:
     def evaluate(self):
         if not self.args.eval_during_training:
             return
-        print(f'Evaluation during training no implemented')
-
+        print(f"Evaluation during training no implemented")
 
     def run_step(self, batch, cond, epoch=-1):
         self.forward_backward(batch, cond, epoch)
-        #clip_grad_value_(self.model.parameters(), clip_value=1.5)
+        # clip_grad_value_(self.model.parameters(), clip_value=1.5)
         self.mp_trainer.optimize(self.opt, self.lr_scheduler)
         self._anneal_lr()
         self.log_step()
@@ -225,7 +220,7 @@ class TrainLoop:
                 self.ddp_model,
                 micro,  # [bs, ch, image_size, image_size]
                 t,  # [bs](int) sampled timesteps
-                model_kwargs=micro_cond
+                model_kwargs=micro_cond,
             )
 
             if last_batch or not self.use_ddp:
@@ -235,16 +230,11 @@ class TrainLoop:
                     losses = compute_losses()
 
             if isinstance(self.schedule_sampler, LossAwareSampler):
-                self.schedule_sampler.update_with_local_losses(
-                    t, losses["loss"].detach()
-                )
+                self.schedule_sampler.update_with_local_losses(t, losses["loss"].detach())
 
             loss = (losses["loss"] * weights).mean()
-            log_loss_dict(
-                self.diffusion, t, {k: v * weights for k, v in losses.items()}
-            )
+            log_loss_dict(self.diffusion, t, {k: v * weights for k, v in losses.items()})
             self.mp_trainer.backward(loss)
-
 
     def _anneal_lr(self):
         if not self.lr_anneal_steps:
@@ -258,84 +248,77 @@ class TrainLoop:
         logger.logkv("step", self.step + self.resume_step)
         logger.logkv("samples", (self.step + self.resume_step + 1) * self.global_batch)
 
-
     def ckpt_file_name(self):
         return f"model{(self.step+self.resume_step):09d}.pt"
 
-
     def save(self):
-            def save_checkpoint():
-                def del_clip(state_dict):
-                    # Do not save CLIP weights
-                    clip_weights = [
-                        e for e in state_dict.keys() if e.startswith('clip_model.')
-                    ]
-                    for e in clip_weights:
-                        del state_dict[e]
+        def save_checkpoint():
+            def del_clip(state_dict):
+                # Do not save CLIP weights
+                clip_weights = [e for e in state_dict.keys() if e.startswith("clip_model.")]
+                for e in clip_weights:
+                    del state_dict[e]
 
-                if self.use_fp16:
-                    state_dict = self.model.state_dict()
-                else:
-                    state_dict = self.mp_trainer.master_params_to_state_dict(
-                        self.mp_trainer.master_params)
-                del_clip(state_dict)
+            if self.use_fp16:
+                state_dict = self.model.state_dict()
+            else:
+                state_dict = self.mp_trainer.master_params_to_state_dict(self.mp_trainer.master_params)
+            del_clip(state_dict)
 
-                if self.args.use_ema:
-                    # save both the model and the average model
-                    state_dict_avg = self.model_avg.state_dict()
-                    del_clip(state_dict_avg)
-                    state_dict = {'model': state_dict, 'model_avg': state_dict_avg}
+            if self.args.use_ema:
+                # save both the model and the average model
+                state_dict_avg = self.model_avg.state_dict()
+                del_clip(state_dict_avg)
+                state_dict = {"model": state_dict, "model_avg": state_dict_avg}
 
-                logger.log(f"saving model...")
-                filename = self.ckpt_file_name()
-                with bf.BlobFile(bf.join(self.save_dir, filename), "wb") as f:
-                    torch.save(state_dict, f)
+            logger.log(f"saving model...")
+            filename = self.ckpt_file_name()
+            with bf.BlobFile(bf.join(self.save_dir, filename), "wb") as f:
+                torch.save(state_dict, f)
 
-            save_checkpoint()
+        save_checkpoint()
 
-            with bf.BlobFile(
-                bf.join(self.save_dir, f"opt{(self.total_step()):09d}.pt"),
-                "wb",
-            ) as f:
-                opt_state = self.opt.state_dict()
-                if self.use_fp16:
-                    # with fp16 we also save the state dict
-                    opt_state = {
-                        'opt': opt_state,
-                        'scaler': self.scaler.state_dict(),
-                    }
+        with bf.BlobFile(
+            bf.join(self.save_dir, f"opt{(self.total_step()):09d}.pt"),
+            "wb",
+        ) as f:
+            opt_state = self.opt.state_dict()
+            if self.use_fp16:
+                # with fp16 we also save the state dict
+                opt_state = {
+                    "opt": opt_state,
+                    "scaler": self.scaler.state_dict(),
+                }
 
-                torch.save(opt_state, f)
-                
+            torch.save(opt_state, f)
+
     def find_resume_checkpoint(self) -> Optional[str]:
-        '''look for all file in save directory in the pattent of model{number}.pt
+        """look for all file in save directory in the pattent of model{number}.pt
             and return the one with the highest step number.
 
         TODO: Implement this function (alredy existing in MDM), so that find model will call it in case a ckpt exist.
         TODO: Change call for find_resume_checkpoint and send save_dir as arg.
         TODO: This means ignoring the flag of resume_checkpoint in case some other ckpts exists in that dir!
-        '''
+        """
 
-        matches = {file: re.match(r'model(\d+).pt$', file) for file in os.listdir(self.args.save_dir)}
+        matches = {file: re.match(r"model(\d+).pt$", file) for file in os.listdir(self.args.save_dir)}
         models = {int(match.group(1)): file for file, match in matches.items() if match}
 
         return pjoin(self.args.save_dir, models[max(models)]) if models else None
-    
+
     def find_resume_opt_checkpoint(self) -> Optional[str]:
-        '''look for all file in save directory in the pattent of model{number}.pt
+        """look for all file in save directory in the pattent of model{number}.pt
             and return the one with the highest step number.
 
         TODO: Implement this function (alredy existing in MDM), so that find model will call it in case a ckpt exist.
         TODO: Change call for find_resume_checkpoint and send save_dir as arg.
         TODO: This means ignoring the flag of resume_checkpoint in case some other ckpts exists in that dir!
-        '''
+        """
 
-        matches = {file: re.match(r'opt(\d+).pt$', file) for file in os.listdir(self.args.save_dir)}
+        matches = {file: re.match(r"opt(\d+).pt$", file) for file in os.listdir(self.args.save_dir)}
         models = {int(match.group(1)): file for file, match in matches.items() if match}
 
         return pjoin(self.args.save_dir, models[max(models)]) if models else None
-
-
 
 
 def parse_resume_step_from_filename(filename):
@@ -366,8 +349,3 @@ def log_loss_dict(diffusion, ts, losses):
         for sub_t, sub_loss in zip(ts.cpu().numpy(), values.detach().cpu().numpy()):
             quartile = int(4 * sub_t / diffusion.num_timesteps)
             logger.logkv_mean(f"{key}_q{quartile}", sub_loss)
-            
-
-
-
-

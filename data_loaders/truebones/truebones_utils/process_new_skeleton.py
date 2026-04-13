@@ -34,10 +34,12 @@ Note that face_joints are marked in blue and feet joints are marked in green.
 4. cond.npy contains the skeletons representation, including joints names ambeddings and graph conditions,
 which is given as input to AnyTop during infecrence. Please follow sampling instructions in README. 
 """
+
+
 def main():
     args = process_new_skeleton_args()
     process_new_object(args.object_name, args.bvh_dir, args.face_joints_names, args.save_dir, args.tpos_bvh)
-    
-if __name__ == '__main__':
-        main()
-    
+
+
+if __name__ == "__main__":
+    main()

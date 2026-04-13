@@ -3,21 +3,24 @@
 # https://github.com/PeizhuoLi/ganimator/blob/main/evaluations/patched_nn.py
 #
 ##############################
-import torch
 import numpy as np
-# from data_utils.mixamo.bvh.bvh_parser import BVH_file
-# from data_utils.mixamo.bvh.bvh_writer import WriterWrapper
-from eval.metrics.transforms import repr6d2quat
-from ganimator_eval_kernel import prepare_group_cost  # pip install git+https://github.com/PeizhuoLi/ganimator-eval-kernel.git
+import torch
 from ganimator_eval_kernel import nn_dp as nn_dp_kernel
+from ganimator_eval_kernel import prepare_group_cost  # pip install git+https://github.com/PeizhuoLi/ganimator-eval-kernel.git
+
 # from ata_eval.metrics.ganimator_eval_kernel_py import prepare_group_cost
 # from ata_eval.metrics.ganimator_eval_kernel_py import nn_dp as nn_dp_kernel
 from eval.metrics.distances import pos_avg_cosine_distance, pos_avg_l2
 
+# from data_utils.mixamo.bvh.bvh_parser import BVH_file
+# from data_utils.mixamo.bvh.bvh_writer import WriterWrapper
+from eval.metrics.transforms import repr6d2quat
+
+
 def nn_dp_fast(group_cost, tmin):
     L = group_cost.shape[0]
     L_target = group_cost.shape[-1]
-    G = np.zeros((L + 5, ), dtype=np.float64)
+    G = np.zeros((L + 5,), dtype=np.float64)
     G.fill(np.inf)
     E = np.zeros(G.shape, dtype=np.int32)
     F = np.zeros_like(E)
@@ -29,7 +32,7 @@ def nn_dp_fast(group_cost, tmin):
     seps = []
     p = L
     while p > 0:
-        label[F[p]:p] = E[p] + np.arange(p - F[p])
+        label[F[p] : p] = E[p] + np.arange(p - F[p])
         seps.append((E[p], E[p] + p - F[p]))
         lengths.append(p - F[p])
         p = F[p]
@@ -42,7 +45,7 @@ def group_cost_from_file(src_file, tgt_files, use_pos=False):
         src_pos = src_file
     else:
         src_bvh = BVH_file(src_file, joint_reduction=False, no_scale=True)
-        src_pos = src_bvh.local_pos() if use_pos else src_bvh.to_tensor(repr='repr6d', rot_only=True)
+        src_pos = src_bvh.local_pos() if use_pos else src_bvh.to_tensor(repr="repr6d", rot_only=True)
         src_pos = src_pos.reshape(src_pos.shape[0], -1)
 
     if isinstance(tgt_files, torch.Tensor):
@@ -53,7 +56,7 @@ def group_cost_from_file(src_file, tgt_files, use_pos=False):
         tgt_poses = []
         for tgt_file in tgt_files:
             tgt_bvh = BVH_file(tgt_file, joint_reduction=False, no_scale=True)
-            tgt_pos = tgt_bvh.local_pos() if use_pos else tgt_bvh.to_tensor(repr='repr6d', rot_only=True)
+            tgt_pos = tgt_bvh.local_pos() if use_pos else tgt_bvh.to_tensor(repr="repr6d", rot_only=True)
             tgt_poses.append(tgt_pos.reshape(tgt_pos.shape[0], -1))
         tgt_pos = torch.cat(tgt_poses, dim=0)
 
@@ -80,7 +83,7 @@ def patched_nn_main(src_file, tgt_files, tmin=30, use_pos=False, out_file=None):
 
     if out_file is not None:
         src_bvh = BVH_file(src_file, joint_reduction=False, no_scale=True)
-        src_tensor = src_bvh.to_tensor(repr='repr6d')
+        src_tensor = src_bvh.to_tensor(repr="repr6d")
 
         writer = WriterWrapper(src_bvh.skeleton.parent, src_bvh.skeleton.offsets)
         tgt_tensors = []
@@ -88,7 +91,7 @@ def patched_nn_main(src_file, tgt_files, tmin=30, use_pos=False, out_file=None):
             tgt_files = [tgt_files]
         for tgt_file in tgt_files:
             tgt_bvh = BVH_file(tgt_file, joint_reduction=False, no_scale=True)
-            tgt_tensor = tgt_bvh.to_tensor(repr='repr6d')
+            tgt_tensor = tgt_bvh.to_tensor(repr="repr6d")
             tgt_tensors.append(tgt_tensor)
 
         tgt_tensor = torch.cat(tgt_tensors, dim=0)

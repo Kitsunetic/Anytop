@@ -6,6 +6,7 @@
 
 import numpy as np
 
+
 def prepare_group_cost(group_cost, cost):
     """
     Prepare group cost by calculating cumulative costs.
@@ -18,6 +19,7 @@ def prepare_group_cost(group_cost, cost):
         for j in range(i + 1, L + 1):
             for k in range(L2 - (j - i - 1)):
                 group_cost[i, j, k] = group_cost[i, j - 1, k] + cost[j - 1, k + j - i - 1]
+
 
 def nn_dp(G, E, F, Cost, tmin, L, Nt):
     """

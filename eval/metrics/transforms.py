@@ -1,6 +1,6 @@
 ##############################
 #
-#https://github.com/PeizhuoLi/ganimator/blob/main/models/transforms.py
+# https://github.com/PeizhuoLi/ganimator/blob/main/models/transforms.py
 #
 ##############################
 import numpy as np
@@ -24,7 +24,7 @@ def batch_mm(matrix, matrix_batch):
     return matrix.mm(vectors).reshape(matrix.shape[0], batch_size, -1).transpose(1, 0)
 
 
-def aa2quat(rots, form='wxyz', unified_orient=True):
+def aa2quat(rots, form="wxyz", unified_orient=True):
     """
     Convert angle-axis representation to wxyz quaternion and to the half plan (w >= 0)
     @param rots: angle-axis rotations, (*, 3)
@@ -38,10 +38,10 @@ def aa2quat(rots, form='wxyz', unified_orient=True):
     axis = rots / norm
     quats = torch.empty(rots.shape[:-1] + (4,), device=rots.device, dtype=rots.dtype)
     angles = angles * 0.5
-    if form == 'wxyz':
+    if form == "wxyz":
         quats[..., 0] = torch.cos(angles.squeeze(-1))
         quats[..., 1:] = torch.sin(angles) * axis
-    elif form == 'xyzw':
+    elif form == "xyzw":
         quats[..., :3] = torch.sin(angles) * axis
         quats[..., 3] = torch.cos(angles.squeeze(-1))
 
@@ -106,7 +106,7 @@ def quat2mat(quats: torch.Tensor):
     return m
 
 
-def quat2euler(q, order='xyz', degrees=True):
+def quat2euler(q, order="xyz", degrees=True):
     """
     Convert (w, x, y, z) quaternions to xyz euler angles. This is  used for bvh output.
     """
@@ -116,12 +116,12 @@ def quat2euler(q, order='xyz', degrees=True):
     q3 = q[..., 3]
     es = torch.empty(q0.shape + (3,), device=q.device, dtype=q.dtype)
 
-    if order == 'xyz':
+    if order == "xyz":
         es[..., 2] = torch.atan2(2 * (q0 * q3 - q1 * q2), q0 * q0 + q1 * q1 - q2 * q2 - q3 * q3)
         es[..., 1] = torch.asin((2 * (q1 * q3 + q0 * q2)).clip(-1, 1))
         es[..., 0] = torch.atan2(2 * (q0 * q1 - q2 * q3), q0 * q0 - q1 * q1 - q2 * q2 + q3 * q3)
     else:
-        raise NotImplementedError('Cannot convert to ordering %s' % order)
+        raise NotImplementedError("Cannot convert to ordering %s" % order)
 
     if degrees:
         es = es * 180 / np.pi
@@ -129,10 +129,12 @@ def quat2euler(q, order='xyz', degrees=True):
     return es
 
 
-def euler2mat(rots, order='xyz'):
-    axis = {'x': torch.tensor((1, 0, 0), device=rots.device),
-            'y': torch.tensor((0, 1, 0), device=rots.device),
-            'z': torch.tensor((0, 0, 1), device=rots.device)}
+def euler2mat(rots, order="xyz"):
+    axis = {
+        "x": torch.tensor((1, 0, 0), device=rots.device),
+        "y": torch.tensor((0, 1, 0), device=rots.device),
+        "z": torch.tensor((0, 0, 1), device=rots.device),
+    }
 
     rots = rots / 180 * np.pi
     mats = []
@@ -154,27 +156,27 @@ def aa2mat(rots):
 
 
 def mat2quat(R) -> torch.Tensor:
-    '''
+    """
     https://github.com/duolu/pyrotation/blob/master/pyrotation/pyrotation.py
     Convert a rotation matrix to a unit quaternion.
 
     This uses the Shepperd’s method for numerical stability.
-    '''
+    """
 
     # The rotation matrix must be orthonormal
 
-    w2 = (1 + R[..., 0, 0] + R[..., 1, 1] + R[..., 2, 2])
-    x2 = (1 + R[..., 0, 0] - R[..., 1, 1] - R[..., 2, 2])
-    y2 = (1 - R[..., 0, 0] + R[..., 1, 1] - R[..., 2, 2])
-    z2 = (1 - R[..., 0, 0] - R[..., 1, 1] + R[..., 2, 2])
+    w2 = 1 + R[..., 0, 0] + R[..., 1, 1] + R[..., 2, 2]
+    x2 = 1 + R[..., 0, 0] - R[..., 1, 1] - R[..., 2, 2]
+    y2 = 1 - R[..., 0, 0] + R[..., 1, 1] - R[..., 2, 2]
+    z2 = 1 - R[..., 0, 0] - R[..., 1, 1] + R[..., 2, 2]
 
-    yz = (R[..., 1, 2] + R[..., 2, 1])
-    xz = (R[..., 2, 0] + R[..., 0, 2])
-    xy = (R[..., 0, 1] + R[..., 1, 0])
+    yz = R[..., 1, 2] + R[..., 2, 1]
+    xz = R[..., 2, 0] + R[..., 0, 2]
+    xy = R[..., 0, 1] + R[..., 1, 0]
 
-    wx = (R[..., 2, 1] - R[..., 1, 2])
-    wy = (R[..., 0, 2] - R[..., 2, 0])
-    wz = (R[..., 1, 0] - R[..., 0, 1])
+    wx = R[..., 2, 1] - R[..., 1, 2]
+    wy = R[..., 0, 2] - R[..., 2, 0]
+    wz = R[..., 1, 0] - R[..., 0, 1]
 
     w = torch.empty_like(x2)
     x = torch.empty_like(x2)
@@ -247,7 +249,7 @@ def mat2quat(R) -> torch.Tensor:
 def quat2repr6d(quat):
     mat = quat2mat(quat)
     res = mat[..., :2, :]
-    res = res.reshape(res.shape[:-2] + (6, ))
+    res = res.reshape(res.shape[:-2] + (6,))
     return res
 
 
@@ -299,7 +301,8 @@ def inv_rigid_affine(mat):
 
 
 def generate_pose(batch_size, device, uniform=False, factor=1, root_rot=False, n_bone=None, ee=None):
-    if n_bone is None: n_bone = 24
+    if n_bone is None:
+        n_bone = 24
     if ee is not None:
         if root_rot:
             ee.append(0)
@@ -348,13 +351,13 @@ def slerp(l, r, t, unit=True):
     t_t = t[flag].unsqueeze(-1)
     res[flag] = (1 - t_t) * l_n[flag] + t_t * r_n[flag]
 
-    flag = ~ flag
+    flag = ~flag
 
     t_t = t[flag]
     d_t = dom[flag]
     va = torch.sin((1 - t_t) * omega[flag]) / d_t
     vb = torch.sin(t_t * omega[flag]) / d_t
-    res[flag] = (va.unsqueeze(-1) * l_n[flag] + vb.unsqueeze(-1) * r_n[flag])
+    res[flag] = va.unsqueeze(-1) * l_n[flag] + vb.unsqueeze(-1) * r_n[flag]
     return res
 
 
@@ -369,7 +372,7 @@ def slerp_quat(l, r, t):
     flag = (l * r).sum(dim=-1) >= 0
     res = torch.empty_like(l)
     res[flag] = slerp(l[flag], r[flag], t[flag])
-    flag = ~ flag
+    flag = ~flag
     res[flag] = slerp(-l[flag], r[flag], t[flag])
     return res
 
@@ -390,7 +393,7 @@ def interpolate_6d(input, size):
     batch = input.shape[0]
     length = input.shape[-1]
     input = input.reshape((batch, -1, 6, length))
-    input = input.permute(0, 1, 3, 2)     # (batch_size, n_joint, length, 6)
+    input = input.permute(0, 1, 3, 2)  # (batch_size, n_joint, length, 6)
     input_q = repr6d2quat(input)
     idx = torch.tensor(list(range(size)), device=input_q.device, dtype=torch.float) / size * (length - 1)
     idx_l = torch.floor(idx)

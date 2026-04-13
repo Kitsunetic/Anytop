@@ -10,10 +10,10 @@ from eval.metrics.patched_nn import group_cost_from_file
 
 
 def calc_perwindow_cost(group_cost, tmin, keepall=False):
-    res = 0.
+    res = 0.0
     all_res = []
     for i in range(group_cost.shape[0] - tmin):
-        cost = np.min(group_cost[i, i+tmin]) / tmin
+        cost = np.min(group_cost[i, i + tmin]) / tmin
         res += cost
         all_res.append(cost)
     if keepall:
@@ -34,7 +34,7 @@ def coverage(src_file, tgt_files, tmin=30, use_pos=False, threshold=2.0):
     for tgt_file in tgt_files:
         group_cost = group_cost_from_file(tgt_file, src_file, use_pos)
         for i in range(group_cost.shape[0] - tmin):
-            cost = np.min(group_cost[i, i+tmin]) / tmin
-            res.append(1.0 if cost < threshold else 0.)
+            cost = np.min(group_cost[i, i + tmin]) / tmin
+            res.append(1.0 if cost < threshold else 0.0)
 
     return np.mean(np.array(res))

@@ -25,18 +25,9 @@ def normal_kl(mean1, logvar1, mean2, logvar2):
 
     # Force variances to be Tensors. Broadcasting helps convert scalars to
     # Tensors, but it does not work for th.exp().
-    logvar1, logvar2 = [
-        x if isinstance(x, th.Tensor) else th.tensor(x).to(tensor)
-        for x in (logvar1, logvar2)
-    ]
+    logvar1, logvar2 = [x if isinstance(x, th.Tensor) else th.tensor(x).to(tensor) for x in (logvar1, logvar2)]
 
-    return 0.5 * (
-        -1.0
-        + logvar2
-        - logvar1
-        + th.exp(logvar1 - logvar2)
-        + ((mean1 - mean2) ** 2) * th.exp(-logvar2)
-    )
+    return 0.5 * (-1.0 + logvar2 - logvar1 + th.exp(logvar1 - logvar2) + ((mean1 - mean2) ** 2) * th.exp(-logvar2))
 
 
 def approx_standard_normal_cdf(x):
@@ -76,10 +67,11 @@ def discretized_gaussian_log_likelihood(x, *, means, log_scales):
     assert log_probs.shape == x.shape
     return log_probs
 
+
 def geodesic_distance(R_pred, R_gt):
     """
     Compute geodesic loss between predicted and ground truth rotation matrices.
-    
+
     Args:
         R_pred (torch.Tensor): Predicted rotation matrices of shape (batch_size, 3, 3).
         R_gt (torch.Tensor): Ground truth rotation matrices of shape (batch_size, 3, 3).
@@ -90,17 +82,17 @@ def geodesic_distance(R_pred, R_gt):
     # Ensure the matrices are valid rotations by using orthogonalization (optional)
     # R_gt = th.nan_to_num(R_gt)
     # U, _, Vt = th.linalg.svd(R_pred)
-    # Q = th.matmul(U, Vt) 
-    #R_pred_orth = th.linalg.qr(R_pred)[0]
-    
+    # Q = th.matmul(U, Vt)
+    # R_pred_orth = th.linalg.qr(R_pred)[0]
+
     # Compute the relative rotation matrix
     R_rel = th.matmul(R_pred.transpose(-1, -2), R_gt)
-    
+
     # Compute the trace of the relative rotation matrix
     trace = th.diagonal(R_rel, dim1=-2, dim2=-1).sum(-1)
-    
+
     # Compute the geodesic loss (angle in radians)
     epsilon = 1e-6
-    theta = th.arccos(th.clamp((trace - 1) / 2, -1+epsilon, 1-epsilon))
-    
+    theta = th.arccos(th.clamp((trace - 1) / 2, -1 + epsilon, 1 - epsilon))
+
     return theta[..., None]
